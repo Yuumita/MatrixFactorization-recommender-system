@@ -4,7 +4,7 @@ import random
 from lossFunction import *
 
 class MatrixFactorization:
-    def __init__(self, R, isValidRating, D=10, eta=0.2, w0=1e-6, alpha=1e-6, loadMatrices=False, verbose=True):
+    def __init__(self, R, isValidRating=None, D=10, eta=0.2, w0=1e-6, alpha=1e-6, loadMatrices=False, verbose=True):
         """
         Initialize the MatrixFactorization class.
 
@@ -39,6 +39,8 @@ class MatrixFactorization:
         self.D = D
         self.N, self.M = R.shape
         self.isValidRating = isValidRating
+        if self.isValidRating is None:
+            self.isValidRating = [[False if R[i][j]==0 else True for j in range(self.M)] for i in range(self.N)]
 
         self.initEta = eta
         self.eta = eta

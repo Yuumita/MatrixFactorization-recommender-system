@@ -54,7 +54,11 @@ isValidRating = np.array([
 ])
 
 
-mf_model = MatrixFactorization(R, isValidRating=isValidRating, D=2, eta=0.2, w0=1e-6, alpha=1e-6, loadMatrices=False, verbose=True)
+mf_model = MatrixFactorization(
+  R, isValidRating=isValidRating, 
+  D=2, eta=0.2, w0=1e-6, alpha=1e-6, 
+  loadMatrices=False, verbose=True
+)
 # If the isValidRating matrix is not given, the 
 # non-valid ratings will be exactly the zeroes of R
 
