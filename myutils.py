@@ -66,37 +66,3 @@ def read_csv(name):
             valid[inUsers[i]][inItems[i]] = True
     
         return (R, valid, userID, itemID, user, item)
-
-
-def getValidRatingsSets(isValidRating):
-    """
-    Convert the sparse boolean matrix isValidRating[*][*] into 
-    sets so it is more efficient to do computations with it.
-
-    Returns:
-        validRatings (set):  A set holding the (i, j) tuples where isValid[i][j] = True
-        calRrows (array of sets):  The set calRrows[i] holds all j such that isValid[i][j] = True
-        calRcols (array of sets):  The set calRrows[j] holds all i such that isValid[i][j] = True
-    """
-    validRatings = set()
-    calRrows = [set() for _ in range(len(isValidRating))]
-    calRcols = [set() for _ in range(len(isValidRating[0]))]
-    for i in range(len(isValidRating)):
-        for j in range(len(isValidRating[i])):
-            if isValidRating[i][j]:
-                validRatings.add((i, j)) 
-                calRrows[i].add(j)
-                calRcols[j].add(i)
-    return (validRatings, calRrows, calRcols)
-
-"""
-def getValidRatingsSets2(U, V, validRatings):
-    calRrows = [set() for _ in range(len(U))]
-    calRcols = [set() for _ in range(len(V))]
-    for p in validRatings:
-        i, j = p
-        calRrows[i].add(j)
-        calRcols[j].add(i)
-    return (calRrows, calRcols)
-
-"""

@@ -32,6 +32,9 @@ class MatrixFactorization:
             getUserFromID (dict): Mapping from user ID to index.
             getItemFromID (dict): Mapping from item ID to index.
             Rbar (numpy.ndarray): Predicted ratings matrix.
+            validRatings (set): Set of all (i, j) such that R[i][j] is valid
+            validRatingsRow (array of sets): validRatingRow[i] is a set of all j such that R[i][j] is valid
+            validRatingsCol (array of sets): validRatingRow[j] is a set of all i such that R[i][j] is valid
             verbose (bool): Whether to print training progress.
         """
         self.N = None
@@ -52,6 +55,10 @@ class MatrixFactorization:
             self.readDataset(datasetName)
 
         self.U, self.V = self.initialize_features(loadMatrices)
+
+        self.validRatings = None
+        self.validRatingsRow = None
+        self.validRatingsCol = None
 
 
     def initialize_features(self, loadMatrices):
@@ -98,31 +105,29 @@ class MatrixFactorization:
         self.N = len(self.userID)
         self.M = len(self.itemID)
 
-    def train(self):
+    def train(self, sgd_iterations = 100):
         """ Train the matrix factorization model. """
-        validRatings, calRrows, calRcols = getValidRatingsSets(self.isValidRating)
+        self.validRatings, self.validRatingsRow, self.validRatingsCol = getValidRatingsSets(self.isValidRating)
 
-        self.Loss = self.LossFunction.calc_loss(self.U, self.V, self.R, validRatings)
+        self.Loss = self.LossFunction.calc_loss(self.U, self.V, self.R, self.validRatings)
 
-        if self.verbose: print(f"L(U, V)/N = {self.Loss / len(validRatings)}")
+        if self.verbose: print(f"L(U, V)/N = {self.Loss / len(self.validRatings)}")
 
         _ = 0
-        while _ < 100:
+        while _ < sgd_iterations:
             if self.verbose: print(f"Starting the {_ + 1}-th learning step. [eta = {self.eta}]")
 
-            validRatings, calRrows, calRcols = getValidRatingsSets(self.isValidRating)
-
-            jU, jV = self.LossFunction.calc_jacobians(self.U, self.V, self.R, (validRatings, calRrows, calRcols))
+            jU, jV = self.LossFunction.calc_jacobians(self.U, self.V, self.R, (self.validRatings, self.validRatingsRow, self.validRatingsCol))
             nU = self.U - self.eta * jU
             nV = self.V - self.eta * jV
 
-            nLoss = self.LossFunction.calc_loss(nU, nV, self.R, validRatings)
+            nLoss = self.LossFunction.calc_loss(nU, nV, self.R, self.validRatings)
 
             if nLoss > self.Loss:
                 self.eta /= 2
                 continue
 
-            if self.verbose: print(f"\tL(U, V)/N = {nLoss / len(validRatings)}")
+            if self.verbose: print(f"\tL(U, V)/N = {nLoss / len(self.validRatings)}")
 
             self.U, self.V, self.Loss = nU, nV, nLoss
 
@@ -134,38 +139,38 @@ class MatrixFactorization:
 
         self.Rbar = self.U @ self.V.T
 
-    def update_rating(self, I, J, newRating):
+    def update_rating(self, I, J, newRating, sgd_iterations = 25):
         """ Update a rating in the dataset and retrain the model. """
         self.R[I][J] = newRating
         self.isValidRating[I][J] = True
+        self.validRatings, self.validRatingsRow, self.validRatingsCol = getValidRatingsSets(self.isValidRating)
 
-        validRatings, calRrows, calRcols = getValidRatingsSets(self.isValidRating)
-        validRatings.add((I, J))
-        calRrows[I].add(J)
-        calRcols[J].add(I)
+        self.Loss = self.LossFunction.calc_loss(self.U, self.V, self.R, self.validRatings)
+
+        if self.verbose: print(f"L(U, V)/N = {self.Loss / len(self.validRatings)}")
 
         _ = 0
-        while _ < 25:
+        while _ < sgd_iterations:
             if self.verbose: print(f"Starting the {_ + 1}-th update step.")
 
-            jU, jV = self.LossFunction.calc_jacobians(self.U, self.V, self.R, (validRatings, calRrows, calRcols))
+            jU, jV = self.LossFunction.calc_jacobians(self.U, self.V, self.R, (self.validRatings, self.validRatingRow, self.validRatingsCol))
             nU = self.U - self.eta * jU
             nV = self.V - self.eta * jV
 
-            nLoss = self.L_function(nU, nV, self.R, validRatings)
+            nLoss = self.L_function(nU, nV, self.R, self.validRatings)
 
             if nLoss > self.Loss:
                 if self.verbose: print("\tStep failed, reducing learning rate.")
                 self.eta /= 2
                 continue
 
-            np.save("U.npy", self.U)
-            np.save("V.npy", self.V)
-
-            if self.verbose: print("\tNew U, V computed and saved.")
-            if self.verbose: print(f"\tL(U, V) = {nLoss}")
+            if self.verbose: print(f"\tL(U, V)/N = {nLoss / len(self.validRatings)}")
 
             self.U, self.V, self.Loss = nU, nV, nLoss
+
+            np.save("U.npy", self.U)
+            np.save("V.npy", self.V)
+            if self.verbose: print("\tNew U, V computed and saved.")
 
             _ += 1
 
@@ -174,3 +179,25 @@ class MatrixFactorization:
     def predict(self, i, j): 
         """ Predict a rating for a user-item pair. """
         return self.Rbar[i][j]
+
+
+    def getValidRatingsSets(isValidRating):
+        """
+        Convert the sparse boolean matrix isValidRating[*][*] into 
+        sets so it is more efficient to do computations with it.
+
+        Returns:
+            validRatings (set):  A set holding the (i, j) tuples where isValid[i][j] = True
+            calRrows (array of sets):  The set calRrows[i] holds all j such that isValid[i][j] = True
+            calRcols (array of sets):  The set calRrows[j] holds all i such that isValid[i][j] = True
+        """
+        validRatings = set()
+        calRrows = [set() for _ in range(len(isValidRating))]
+        calRcols = [set() for _ in range(len(isValidRating[0]))]
+        for i in range(len(isValidRating)):
+            for j in range(len(isValidRating[i])):
+                if isValidRating[i][j]:
+                    validRatings.add((i, j)) 
+                    calRrows[i].add(j)
+                    calRcols[j].add(i)
+        return (validRatings, calRrows, calRcols)
