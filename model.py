@@ -4,20 +4,23 @@ import random
 from lossFunction import *
 
 class MatrixFactorization:
-    def __init__(self, datasetName = None, loadMatrices = False, D=10, eta=0.2, verbose=True):
+    def __init__(self, R, isValidRating, D=10, eta=0.2, w0=1e-6, alpha=1e-6, loadMatrices=False, verbose=True):
         """
         Initialize the MatrixFactorization class.
 
         Args:
-            N (int): Number of users.
-            M (int): Number of items.
-            datasetName (str): Name of the dataset (CSV file).
-            loadMatrices (bool): Whether to load pre-existing matrices.
+            R (numpy.ndarray): Ratings matrix.
+            isValidRating (numpy.ndarray): Matrix indicating valid ratings.
             D (int): Dimensionality of the feature matrices.
             eta (float): Initial learning rate.
+            w0 (float): Uknown rating weight parameter of Loss function.
+            w0 (float): Regularization parameter of Loss function.
+            loadMatrices (bool): Whether to load pre-existing matrices.
             verbose (bool): Whether to print training progress.
 
         Attributes:
+            R (numpy.ndarray): Ratings matrix.
+            isValidRating (numpy.ndarray): Matrix indicating valid ratings.
             N (int): Number of users.
             M (int): Number of items.
             D (int): Dimensionality of the feature matrices.
@@ -25,40 +28,27 @@ class MatrixFactorization:
             U (numpy.ndarray): User feature matrix.
             V (numpy.ndarray): Item feature matrix.
             LossFunction (LossFunction): Loss function instance.
-            R (numpy.ndarray): Ratings matrix.
-            isValidRating (numpy.ndarray): Matrix indicating valid ratings.
-            userID (dict): Mapping of user index to user ID.
-            itemID (dict): Mapping of item index to item ID.
-            getUserFromID (dict): Mapping from user ID to index.
-            getItemFromID (dict): Mapping from item ID to index.
             Rbar (numpy.ndarray): Predicted ratings matrix.
             validRatings (set): Set of all (i, j) such that R[i][j] is valid
             validRatingsRow (array of sets): validRatingRow[i] is a set of all j such that R[i][j] is valid
             validRatingsCol (array of sets): validRatingRow[j] is a set of all i such that R[i][j] is valid
             verbose (bool): Whether to print training progress.
         """
-        self.N = None
-        self.M = None
+        self.R = R
         self.D = D
+        self.N, self.M = R.shape
+        self.isValidRating = isValidRating
+
         self.eta = eta
 
-        self.LossFunction = LossFunction()
-
-        self.R = None
-        self.isValidRating = None
-        self.userID, self.itemID = None, None
-        self.getUserFromID, self.getItemFromID = None, None
+        self.LossFunction = LossFunction(w0=w0, alpha=alpha)
         self.Rbar = None
         self.verbose = verbose
 
-        if datasetName != None:
-            self.readDataset(datasetName)
+        self.initialize_features(loadMatrices)
 
-        self.U, self.V = self.initialize_features(loadMatrices)
-
-        self.validRatings = None
-        self.validRatingsRow = None
-        self.validRatingsCol = None
+        self.validRatings, self.validRatingsRow, self.validRatingsCol = None, None, None
+        self.computeValidRatingsSets()
 
 
     def initialize_features(self, loadMatrices):
@@ -72,18 +62,23 @@ class MatrixFactorization:
             tuple: User feature matrix U, Item feature matrix V.
         """
         if loadMatrices:
-            return np.load("U.npy"), np.load("V.npy")
+            U, V = np.load("U.npy"), np.load("V.npy")
+            print(U.shape, " @ ", (self.N, self.D))
+            print(V.shape, " @ ", (self.M, self.D))
+            if U.shape != (self.N, self.D) or V.shape != (self.M, self.D):
+                raise ValueError("Loaded matrices don't have valid dimensions. You might want to initialize new ones.")
+            self.U, self.V = U, V
+        else: 
+            U = np.zeros((self.N, self.D))
+            for i in range(self.N):
+                U[i][random.randint(0, self.D - 1)] = 1
 
-        U = np.zeros((self.N, self.D))
-        for i in range(self.N):
-            U[i][random.randint(0, self.D - 1)] = 1
+            V = np.zeros((self.M, self.D))
+            for j in range(self.M):
+                V[j][random.randint(0, self.D - 1)] = 1
 
-        V = np.zeros((self.M, self.D))
-        for j in range(self.M):
-            V[j][random.randint(0, self.D - 1)] = 1
-
-        return U, V
-    
+            self.U, self.V = U, V
+        
     def readDataset(self, datasetName):
         """
         Read and initialize the dataset.
@@ -107,7 +102,6 @@ class MatrixFactorization:
 
     def train(self, sgd_iterations = 100):
         """ Train the matrix factorization model. """
-        self.validRatings, self.validRatingsRow, self.validRatingsCol = getValidRatingsSets(self.isValidRating)
 
         self.Loss = self.LossFunction.calc_loss(self.U, self.V, self.R, self.validRatings)
 
@@ -143,7 +137,10 @@ class MatrixFactorization:
         """ Update a rating in the dataset and retrain the model. """
         self.R[I][J] = newRating
         self.isValidRating[I][J] = True
-        self.validRatings, self.validRatingsRow, self.validRatingsCol = getValidRatingsSets(self.isValidRating)
+        self.validRatings.add((I, J))
+        self.validRatingsRow[I].add(J)
+        self.validRatingsRow[J].add(J)
+
 
         self.Loss = self.LossFunction.calc_loss(self.U, self.V, self.R, self.validRatings)
 
@@ -181,23 +178,24 @@ class MatrixFactorization:
         return self.Rbar[i][j]
 
 
-    def getValidRatingsSets(isValidRating):
+    def computeValidRatingsSets(self):
         """
-        Convert the sparse boolean matrix isValidRating[*][*] into 
+        Convert the sparse boolean matrix self.isValidRating[*][*] into 
         sets so it is more efficient to do computations with it.
 
-        Returns:
-            validRatings (set):  A set holding the (i, j) tuples where isValid[i][j] = True
-            calRrows (array of sets):  The set calRrows[i] holds all j such that isValid[i][j] = True
-            calRcols (array of sets):  The set calRrows[j] holds all i such that isValid[i][j] = True
+        Updates values to:
+            self.validRatings (set):  A set holding the (i, j) tuples where isValidRating[i][j] = True
+            self.validRatingsRow (array of sets):  The set self.validRatingsRow[i] holds all j such that isValidRating[i][j] = True
+            self.validRatingsCol (array of sets):  The set self.validRatingsCol[j] holds all i such that isValidRating[i][j] = True
         """
         validRatings = set()
-        calRrows = [set() for _ in range(len(isValidRating))]
-        calRcols = [set() for _ in range(len(isValidRating[0]))]
-        for i in range(len(isValidRating)):
-            for j in range(len(isValidRating[i])):
-                if isValidRating[i][j]:
+        calRrows = [set() for _ in range(len(self.isValidRating))]
+        calRcols = [set() for _ in range(len(self.isValidRating[0]))]
+        for i in range(len(self.isValidRating)):
+            for j in range(len(self.isValidRating[i])):
+                if self.isValidRating[i][j]:
                     validRatings.add((i, j)) 
                     calRrows[i].add(j)
                     calRcols[j].add(i)
-        return (validRatings, calRrows, calRcols)
+
+        self.validRatings, self.validRatingsRow, self.validRatingsCol = (validRatings, calRrows, calRcols)

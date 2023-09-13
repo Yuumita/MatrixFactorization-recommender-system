@@ -2,6 +2,46 @@ import csv
 import numpy as np
 import random
 
+class UserItemInfo:
+    def __init__(self, datasetName):
+        """
+        Initialize the UserItemInfo class.
+
+        Args:
+            datasetName (str): Name of the dataset (CSV file).
+
+        Attributes:
+            R (numpy.ndarray): Ratings matrix.
+            isValidRating (numpy.ndarray): Matrix indicating valid ratings.
+            userID (dict): Mapping of user index to user ID.
+            itemID (dict): Mapping of item index to item ID.
+            getUserFromID (dict): Mapping from user ID to index.
+            getItemFromID (dict): Mapping from item ID to index.
+        """
+        self.R, self.isValidRating = None, None
+        self.userID, self.itemID = None, None
+        self.getUserFromID, self.getItemFromID = None, None
+        
+        self.readDataset(datasetName)
+
+    def readDataset(self, datasetName):
+        """
+        Read and initialize the dataset.
+
+        Args:
+            datasetName (str): Name of the dataset (CSV file).
+
+        Raises:
+            ValueError: If the dataset name is not recognized.
+        """
+        if datasetName[-4:] == ".csv":
+            (
+                self.R, self.isValidRating, self.userID, self.itemID,
+                self.getUserFromID, self.getItemFromID
+            ) = read_csv(datasetName[:-4])
+        else:
+            raise ValueError("Dataset file format not supported.")
+
 def coordinate_compress(A):
     """
     Returns the compression of array A with the function that maps the new values to the old ones
