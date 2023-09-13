@@ -67,7 +67,7 @@ print(f"U.shape = {mf_model.U.shape}, V.shape = {mf_model.V.shape}")
 while True: 
     option = int(input("Choose an option (1/2/3)\n\t1. Train model\n\t2. Update a Rating\n\t3. Test Model\n\t(Anything else to quit)\n"))
     if option == 1:
-        mf_model.train()
+        mf_model.train(sgd_iterations=10)
     elif option == 2:
         print("Insert user id, movie id, new rating:\n")
         i = info.getUserFromID[int(input())]

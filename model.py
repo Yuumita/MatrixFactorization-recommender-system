@@ -24,7 +24,8 @@ class MatrixFactorization:
             N (int): Number of users.
             M (int): Number of items.
             D (int): Dimensionality of the feature matrices.
-            eta (float): Initial learning rate.
+            eta (float): Starting learning rate.
+            eta (float): The current learning rate.
             U (numpy.ndarray): User feature matrix.
             V (numpy.ndarray): Item feature matrix.
             LossFunction (LossFunction): Loss function instance.
@@ -39,6 +40,7 @@ class MatrixFactorization:
         self.N, self.M = R.shape
         self.isValidRating = isValidRating
 
+        self.initEta = eta
         self.eta = eta
 
         self.LossFunction = LossFunction(w0=w0, alpha=alpha)
@@ -63,10 +65,8 @@ class MatrixFactorization:
         """
         if loadMatrices:
             U, V = np.load("U.npy"), np.load("V.npy")
-            print(U.shape, " @ ", (self.N, self.D))
-            print(V.shape, " @ ", (self.M, self.D))
             if U.shape != (self.N, self.D) or V.shape != (self.M, self.D):
-                raise ValueError("Loaded matrices don't have valid dimensions. You might want to initialize new ones.")
+                raise ValueError("Loaded matrices don't have valid dimensions.")
             self.U, self.V = U, V
         else: 
             U = np.zeros((self.N, self.D))
@@ -78,38 +78,23 @@ class MatrixFactorization:
                 V[j][random.randint(0, self.D - 1)] = 1
 
             self.U, self.V = U, V
-        
-    def readDataset(self, datasetName):
-        """
-        Read and initialize the dataset.
-
-        Args:
-            datasetName (str): Name of the dataset (CSV file).
-
-        Raises:
-            ValueError: If the dataset name is not recognized.
-        """
-        if datasetName[-4:] == ".csv":
-            (
-                self.R, self.isValidRating, self.userID, self.itemID, 
-                self.getUserFromID, self.getItemFromID 
-            ) = read_csv(datasetName[:-4])
-        else:
-            raise ValueError("Dataset file format not supported.")
-
-        self.N = len(self.userID)
-        self.M = len(self.itemID)
 
     def train(self, sgd_iterations = 100):
-        """ Train the matrix factorization model. """
+        """ 
+        Train the matrix factorization model. 
+
+        Returns:
+            (array): An array containing tuples (iteration, Loss) containing the iteration number and corresponding loss
+        """
 
         self.Loss = self.LossFunction.calc_loss(self.U, self.V, self.R, self.validRatings)
 
-        if self.verbose: print(f"L(U, V)/N = {self.Loss / len(self.validRatings)}")
+        if self.verbose: print(f"L(U, V)/(# of valid ratings) = {self.Loss / len(self.validRatings)}\tL(U, V) = {self.Loss}")
 
-        _ = 0
-        while _ < sgd_iterations:
-            if self.verbose: print(f"Starting the {_ + 1}-th learning step. [eta = {self.eta}]")
+        training_history = []
+        iteration = 0
+        while iteration < sgd_iterations:
+            if self.verbose: print(f"Starting the {iteration + 1}-th learning step. [eta = {self.eta}]")
 
             jU, jV = self.LossFunction.calc_jacobians(self.U, self.V, self.R, (self.validRatings, self.validRatingsRow, self.validRatingsCol))
             nU = self.U - self.eta * jU
@@ -121,7 +106,7 @@ class MatrixFactorization:
                 self.eta /= 2
                 continue
 
-            if self.verbose: print(f"\tL(U, V)/N = {nLoss / len(self.validRatings)}")
+            if self.verbose: print(f"\tL(U, V)/(# of valid ratings) = {self.Loss / len(self.validRatings)}\tL(U, V) = {self.Loss}")
 
             self.U, self.V, self.Loss = nU, nV, nLoss
 
@@ -129,12 +114,21 @@ class MatrixFactorization:
             np.save("V.npy", self.V)
             if self.verbose: print("\tNew U, V computed and saved.")
 
-            _ += 1
-
+            training_history.append(self.Loss)
+            iteration += 1
+        
+        self.eta = self.initEta
         self.Rbar = self.U @ self.V.T
 
+        return training_history
+
     def update_rating(self, I, J, newRating, sgd_iterations = 25):
-        """ Update a rating in the dataset and retrain the model. """
+        """ 
+        Update a rating in the dataset and retrain the model. 
+
+        Returns:
+            (array): An array where in the i-th position is the Loss corresponding to the i-th iteration
+        """
         self.R[I][J] = newRating
         self.isValidRating[I][J] = True
         self.validRatings.add((I, J))
@@ -144,11 +138,12 @@ class MatrixFactorization:
 
         self.Loss = self.LossFunction.calc_loss(self.U, self.V, self.R, self.validRatings)
 
-        if self.verbose: print(f"L(U, V)/N = {self.Loss / len(self.validRatings)}")
+        if self.verbose: print(f"L(U, V)/(# of valid ratings) = {self.Loss / len(self.validRatings)}\tL(U, V) = {self.Loss}")
 
-        _ = 0
-        while _ < sgd_iterations:
-            if self.verbose: print(f"Starting the {_ + 1}-th update step.")
+        training_history = []
+        iteration = 0
+        while iteration < sgd_iterations:
+            if self.verbose: print(f"Starting the {iteration + 1}-th update step.")
 
             jU, jV = self.LossFunction.calc_jacobians(self.U, self.V, self.R, (self.validRatings, self.validRatingRow, self.validRatingsCol))
             nU = self.U - self.eta * jU
@@ -161,7 +156,7 @@ class MatrixFactorization:
                 self.eta /= 2
                 continue
 
-            if self.verbose: print(f"\tL(U, V)/N = {nLoss / len(self.validRatings)}")
+            if self.verbose: print(f"\tL(U, V)/(# of valid ratings) = {self.Loss / len(self.validRatings)}\tL(U, V) = {self.Loss}")
 
             self.U, self.V, self.Loss = nU, nV, nLoss
 
@@ -169,8 +164,10 @@ class MatrixFactorization:
             np.save("V.npy", self.V)
             if self.verbose: print("\tNew U, V computed and saved.")
 
-            _ += 1
+            training_history.append(self.Loss)
+            iteration += 1
 
+        self.eta = self.initEta
         self.Rbar = U @ V.T
 
     def predict(self, i, j): 
