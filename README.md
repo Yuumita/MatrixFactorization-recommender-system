@@ -14,7 +14,11 @@ Namely, we have the following complexities
 - **Loss calculation time complexity:** $O\left(|\mathcal{R}|D + (N+M)D^2\right)$
 - **Precalculations time complexity**: $O(NM)$
 
+The loss function we seek to minimize is
 
+$$ L(U, V) = \sum_{(i,j)\in \mathcal{R}}\left( r_{ij} - \mathbf{u}_ {i} \mathbf{v}_ {j}^\text{T} \right)^{2} + w_{0}\sum_{(i,j) \not\in \mathcal{R}}+  \left( \mathbf{u}_ {i}\mathbf{v}_ {j}^\text{T}  \right)^{2},  \quad w_{0}\in\mathbb{R}\ $$
+
+where $\\{\mathbf{u}_ i\\}_ {i=1}^N,\  \\{\mathbf{v}_ j\\}_ {j=1}^M$ are the features of the users and movies respectively.
 
 ## Implementation details
 
