@@ -20,6 +20,9 @@ $$ L(U, V) = \sum_{(i,j)\in \mathcal{R}}\left( r_{ij} - \mathbf{u}_ {i} \mathbf{
 
 where $\\{\mathbf{u}_ i\\}_ {i=1}^N,\  \\{\mathbf{v}_ j\\}_ {j=1}^M$ are the features of the users and movies respectively.
 
+
+More descriptive explanations are given in [my article](https://www.algorithmas.org/articles/Movie-Time-Recommendation-system-with-Matrix-Factorization.html#Epilogue).
+
 ## Implementation details
 
 ### File description
